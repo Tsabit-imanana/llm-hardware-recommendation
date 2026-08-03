@@ -1,0 +1,91 @@
+import os
+import json
+import pandas as pd
+# pyrefly: ignore [missing-import]
+from llama_cpp import Llama
+from data.dataset_loader import load_humaneval_subset
+from core.execution_engine import run_code_in_sandbox
+
+MODELS_MAP = {
+    "FP16": "./models/qwen2.5-7b-instruct-fp16.gguf",
+    "Q8_0": "./models/qwen2.5-7b-instruct-q8_0.gguf",
+    "Q6_K": "./models/qwen2.5-7b-instruct-q6_k.gguf",
+    "Q5_K_M": "./models/qwen2.5-7b-instruct-q5_k_m.gguf",
+    "Q4_K_M": "./models/qwen2.5-7b-instruct-q4_k_m.gguf"
+}
+
+# Locked Control Variables (Reproducibility)
+SEED = 42
+TEMPERATURE = 0.2
+TOP_P = 0.95
+MAX_TOKENS = 512
+NUM_PROMPTS = 20  # Evaluated sample size N
+
+def extract_python_code(raw_response: str) -> str:
+    """Extracts raw executable code block from Markdown output if present."""
+    if "```python" in raw_response:
+        return raw_response.split("```python")[1].split("```")[0].strip()
+    elif "```" in raw_response:
+        return raw_response.split("```")[1].split("```")[0].strip()
+    return raw_response.strip()
+
+def run_evaluation():
+    dataset = load_humaneval_subset(limit=NUM_PROMPTS)
+    results_matrix = {quant: [] for quant in MODELS_MAP.keys()}
+    
+    for quant_level, model_path in MODELS_MAP.items():
+        if not os.path.exists(model_path):
+            print(f"Skipping {quant_level}: Model file not found at {model_path}", flush=True)
+            continue
+            
+        print(f"\n==========================================", flush=True)
+        print(f" Running Evaluation for Quantization: {quant_level}", flush=True)
+        print(f"==========================================", flush=True)
+        print(f"--> Loading model weights: {model_path} ...", flush=True)
+        
+        # Instantiate low-level llama.cpp engine
+        llm = Llama(
+            model_path=model_path,
+            n_ctx=2048,
+            n_gpu_layers=-1,  # Offload layers to GPU if CUDA available
+            seed=SEED,
+            verbose=False
+        )
+        print(f"✓ Model {quant_level} loaded into memory successfully.", flush=True)
+        
+        for idx, item in enumerate(dataset):
+            print(f"[{quant_level}] Prompt {idx+1}/{NUM_PROMPTS} ({item['task_id']}) generating code...", flush=True)
+            prompt_text = f"Complete the following Python function. Output ONLY executable Python code inside codeblocks:\n\n{item['prompt']}"
+            
+            # Deterministic Inference Execution
+            output = llm(
+                prompt=prompt_text,
+                max_tokens=MAX_TOKENS,
+                temperature=TEMPERATURE,
+                top_p=TOP_P,
+                stop=["\n\n\n", "Problem:", "Note:"]
+            )
+            
+            raw_gen = output["choices"][0]["text"]
+            gen_code = extract_python_code(raw_gen)
+            
+            # Reconstruct full script
+            full_code = f"{item['prompt']}\n{gen_code}"
+            assertions = [item["test_code"]]
+            
+            # Execute in sandbox using existing execution engine
+            eval_res = run_code_in_sandbox(full_code, assertions, timeout_sec=5.0)
+            pass_rate = eval_res["unit_test_pass_rate"]
+            
+            results_matrix[quant_level].append(pass_rate)
+            print(f"[{quant_level}] Prompt {idx+1}/{NUM_PROMPTS} ({item['task_id']}) -> UR: {pass_rate:.2f}", flush=True)
+
+    # Save real matrix output to JSON
+    os.makedirs("./results", exist_ok=True)
+    with open("./results/real_eval_matrix.json", "w") as f:
+        json.dump(results_matrix, f, indent=4)
+        
+    print("\n✓ Real LLM Evaluation Completed! Saved matrix to ./results/real_eval_matrix.json", flush=True)
+
+if __name__ == "__main__":
+    run_evaluation()

@@ -1,0 +1,29 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Python Cache & Compiled Files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Large Model Weights (.gguf binaries)
+models/*.gguf
+models/**
+!models/.gitkeep
+
+# Hugging Face Cache
+.cache/
+models/.cache/
+
+# Temporary Logs & Output Files
+logs/*.log
+*.log
+
+# OS & IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
