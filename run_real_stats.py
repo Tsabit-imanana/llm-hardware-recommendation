@@ -1,7 +1,28 @@
+import os
+import sys
 import json
 import pandas as pd
 from stats.stat_engine import analyze_quantization_impact
 from core.recommender import recommend_model
+
+class TeeLogger:
+    """Redirects stdout to both terminal screen and a log file."""
+    def __init__(self, log_filepath):
+        os.makedirs(os.path.dirname(log_filepath), exist_ok=True)
+        self.terminal = sys.stdout
+        self.log = open(log_filepath, "w", encoding="utf-8")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+sys.stdout = TeeLogger("./logs/real_stats_summary.log")
+
 
 def main():
     matrix_file = "./results/real_eval_matrix.json"

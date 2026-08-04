@@ -1,10 +1,30 @@
 import os
+import sys
 import json
 import pandas as pd
 # pyrefly: ignore [missing-import]
 from llama_cpp import Llama
 from data.dataset_loader import load_humaneval_subset
 from core.execution_engine import run_code_in_sandbox
+
+class TeeLogger:
+    """Redirects stdout to both terminal screen and a log file."""
+    def __init__(self, log_filepath):
+        os.makedirs(os.path.dirname(log_filepath), exist_ok=True)
+        self.terminal = sys.stdout
+        self.log = open(log_filepath, "w", encoding="utf-8")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+sys.stdout = TeeLogger("./logs/real_eval_execution.log")
+
 
 MODELS_MAP = {
     "FP16": "./models/qwen2.5-7b-instruct-fp16.gguf",
@@ -49,7 +69,7 @@ def run_evaluation():
             n_ctx=2048,
             n_gpu_layers=-1,  # Offload layers to GPU if CUDA available
             seed=SEED,
-            verbose=False
+            verbose=True
         )
         print(f"✓ Model {quant_level} loaded into memory successfully.", flush=True)
         
