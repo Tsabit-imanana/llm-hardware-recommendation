@@ -77,12 +77,52 @@ pip install -r requirements.txt
 
 ---
 
+## 🌐 Interactive Streamlit Web UI (Real-Time Progress & Analytics)
+
+An interactive, dark-themed Streamlit Web Dashboard is included to manage model downloading, execute LLM evaluation benchmarks, monitor real-time execution progress, and visualize statistical recommendation matrices.
+
+### Launching the Web UI
+
+Run the following command from your terminal:
+
+```bash
+streamlit run app.py
+```
+*(Or `./venv/bin/streamlit run app.py`)*
+
+Once started, navigate to `http://localhost:8501` in your browser.
+
+### Key Web UI Features
+
+1. **🔍 Project Overview & Workspace Scanner**:
+   * Scans python codebase files, total lines of code, downloaded GGUF model files, matrix status (`results/real_eval_matrix.json`), and execution log sizes.
+   * Auto-detects GPU / CUDA hardware capability and available VRAM.
+
+2. **📥 Hugging Face Model Downloader (Live Search)**:
+   * **Preset Quantization Downloads**: One-click download presets for `FP16`, `Q8_0`, `Q6_K`, `Q5_K_M`, and `Q4_K_M`.
+   * **Live Hugging Face Search**: Search Hugging Face Hub repositories live (e.g. `Qwen2.5-7B`, `Llama-3.1`), inspect `.gguf` quantization files available in the repo, and trigger downloads into `./models/`.
+   * **Real-Time Progress & Storage Manager**: Visual progress bar tracking download state and local storage manager to view/delete downloaded GGUF files.
+
+3. **⚡ LLM Evaluation Engine (`eval_real_llm`)**:
+   * Asynchronous non-blocking execution runner with Start/Stop controls.
+   * **Real-Time Progress Bar**: Tracks active prompt progress (`Prompt X/20`) and quantization level steps (`FP16` → `Q8_0` → `Q6_K` → `Q5_K_M` → `Q4_K_M`).
+   * **Live Output Console**: Live log streaming terminal window watching `./logs/real_eval_execution.log`.
+   * **Live Metric Charts**: Dynamic Plotly bar charts comparing average unit test pass rates (UR) and prompt-by-prompt performance line charts.
+
+4. **📊 Statistical Summary & Hardware Recommender (`run_real_stat`)**:
+   * **Statistical Test Dashboard**: Instant visual cards for *Friedman Chi-Squared ($\chi^2$)*, *$p$-value*, *Kendall's W Effect Size*, and *Degradation Elbow Point*.
+   * **Dunn's Post-Hoc Heatmap**: Interactive Plotly heatmap displaying Bonferroni-adjusted pairwise $p$-values.
+   * **Interactive Hardware Recommendation Engine**: Dynamic VRAM slider ($1.0\text{ GB} - 32.0\text{ GB}$) evaluating model suitability and quantization trade-offs for custom GPU hardware.
+
+---
+
 ## 🚀 Execution Pipeline & Workflow Order
 
-Execute the pipeline scripts in the following order:
+Execute the pipeline scripts in the following order (either via the CLI or via the Streamlit Web UI):
 
 ```
-[Step 1] download_models.py  ➜  [Step 2] eval_real_llm.py  ➜  [Step 3] run_real_stats.py
+[Option A: Web UI] streamlit run app.py
+[Option B: CLI]    download_models.py  ➜  eval_real_llm.py  ➜  run_real_stats.py
 ```
 
 ### Step 1: Download GGUF Model Weights
@@ -160,6 +200,10 @@ To evaluate different model families (e.g., `Llama-3.1-8B-Instruct`) or alternat
 │   └── download_models.py    # Automated Hugging Face GGUF downloader
 ├── stats/
 │   └── stat_engine.py        # Inferential statistical engine (Friedman, Kendall, Dunn)
+├── utils/
+│   ├── hf_helper.py          # Live Hugging Face search & GGUF file inspector
+│   └── process_runner.py     # Asynchronous process runner with real-time log parsing
+├── app.py                    # Interactive Streamlit Web UI Application
 ├── eval_real_llm.py          # Primary real LLM evaluation pipeline script
 ├── run_real_stats.py         # Primary statistical & recommendation execution script
 ├── main.py                   # End-to-end synthetic simulation prototype script
@@ -171,3 +215,4 @@ To evaluate different model families (e.g., `Llama-3.1-8B-Instruct`) or alternat
 
 ## 📜 License
 This project is open-source and intended for research on LLM quantization performance trade-offs. Feel free to modify and build upon it.
+
