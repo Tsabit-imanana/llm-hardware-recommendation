@@ -1,6 +1,6 @@
 # Local LLM Quantization Benchmark & Hardware-Aware Recommendation Framework
 
-An end-to-end benchmarking framework and inferential statistical analysis pipeline designed to evaluate the impact of Large Language Model (LLM) quantization levels on code execution accuracy (*Pass Rate / Unitarity*), while providing hardware-aware model quantization recommendations based on available System RAM / GPU VRAM constraints.
+An end-to-end benchmarking framework and inferential statistical analysis pipeline designed to evaluate the impact of Large Language Model (LLM) quantization levels on code execution accuracy (*Pass Rate / Unitarity*) using **HumanEvalPlus (EvalPlus)**, while providing hardware-aware model quantization recommendations based on available System RAM / GPU VRAM constraints across **NVIDIA CUDA**, **AMD ROCm/HIP**, and **Vulkan** hardware backends.
 
 ---
 
@@ -14,10 +14,14 @@ Ensure your environment meets the following specifications before proceeding:
 * **VRAM (Optional but Recommended)**:
   * Minimum **6 GB - 8 GB VRAM** for GPU acceleration on `Q4_K_M` / `Q5_K_M` quantization levels.
   * **16 GB+ VRAM** to offload full `FP16` models to GPU.
-* **Disk Space**: At least **40 GB** free storage space (to store multiple `.gguf` model weights).
+* **GPU Hardware Backends**:
+  * **NVIDIA GPU**: CUDA Toolkit 11.8+ / 12.0+.
+  * **AMD GPU**: AMD ROCm 5.x / 6.x (HIP) or Vulkan driver for consumer Radeon RX series.
+  * **Apple Silicon**: macOS Metal API.
+* **Disk Space**: At least **40 GB** free storage space (to store `.gguf` model weights).
 
 ### Software Requirements
-* **Operating System**: Linux (Ubuntu 20.04+, Debian, Arch Linux, RHEL) or macOS (macOS 12+ Monterey / Ventura / Sonoma / Sequoia).
+* **Operating System**: Linux (Ubuntu 20.04+, Debian, Arch Linux, RHEL) or macOS (macOS 12+).
 * **Python**: Python `3.10` or `3.11` (Recommended).
 * **C++ Compiler & Build Toolchain**:
   * **Linux**: `gcc`, `g++`, `make`, `cmake`.
@@ -32,8 +36,8 @@ Open your terminal and execute the following commands:
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/repository-name.git
-cd repository-name
+git clone https://github.com/Tsabit-imanana/llm-hardware-recommendation.git
+cd llm-hardware-recommendation
 
 # Create a virtual environment
 python3 -m venv venv
@@ -49,27 +53,35 @@ source venv/bin/activate
 Install `llama-cpp-python` according to your specific hardware setup:
 
 #### A. Linux Users (NVIDIA GPU - CUDA Acceleration)
-If you have an NVIDIA GPU with the CUDA Toolkit installed:
 ```bash
 CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python --force-reinstall --upgrade --no-cache-dir
 ```
 
-#### B. macOS Users (Apple Silicon M1/M2/M3/M4 - Metal Acceleration)
-Metal GPU acceleration is supported natively on Apple Silicon:
+#### B. Linux Users (AMD GPU - ROCm / HIP Acceleration)
+```bash
+CMAKE_ARGS="-DGGML_HIPBLAS=on" HSA_OVERRIDE_GFX_VERSION=10.3.0 pip install llama-cpp-python --force-reinstall --upgrade --no-cache-dir
+```
+*Note: For AMD Radeon RX 6000 series (RDNA2), use `HSA_OVERRIDE_GFX_VERSION=10.3.0`. For RX 7000 series (RDNA3), use `11.0.0`.*
+
+#### C. Universal AMD / Multi-Vendor GPU (Vulkan Acceleration)
+```bash
+CMAKE_ARGS="-DGGML_VULKAN=on" pip install llama-cpp-python --force-reinstall --upgrade --no-cache-dir
+```
+
+#### D. macOS Users (Apple Silicon M1/M2/M3/M4 - Metal Acceleration)
 ```bash
 CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python --force-reinstall --upgrade --no-cache-dir
 ```
 
-#### C. CPU Only (Linux / macOS without GPU)
-For CPU-only execution without GPU offloading:
+#### E. CPU Only (Linux / macOS without GPU)
 ```bash
 pip install llama-cpp-python
 ```
 
 ---
 
-### 3. Install Additional Dependencies
-Install all required Python packages listed in `requirements.txt`:
+### 3. Install Framework Dependencies
+Install all required Python packages:
 
 ```bash
 pip install -r requirements.txt
@@ -79,7 +91,7 @@ pip install -r requirements.txt
 
 ## 🌐 Interactive Streamlit Web UI (Real-Time Progress & Analytics)
 
-An interactive, dark-themed Streamlit Web Dashboard is included to manage model downloading, execute LLM evaluation benchmarks, monitor real-time execution progress, and visualize statistical recommendation matrices.
+An interactive, dark-themed Streamlit Web Dashboard is included to manage model downloading, configure AMD/NVIDIA GPU hardware parameters, execute LLM evaluation benchmarks, monitor real-time execution progress, and visualize statistical recommendation matrices.
 
 ### Launching the Web UI
 
@@ -96,20 +108,24 @@ Once started, navigate to `http://localhost:8501` in your browser.
 
 1. **🔍 Project Overview & Workspace Scanner**:
    * Scans python codebase files, total lines of code, downloaded GGUF model files, matrix status (`results/real_eval_matrix.json`), and execution log sizes.
-   * Auto-detects GPU / CUDA hardware capability and available VRAM.
+   * Auto-detects multi-vendor GPU hardware (NVIDIA CUDA, AMD ROCm/HIP, Vulkan, CPU) and available VRAM.
 
 2. **📥 Hugging Face Model Downloader (Live Search)**:
    * **Preset Quantization Downloads**: One-click download presets for `FP16`, `Q8_0`, `Q6_K`, `Q5_K_M`, and `Q4_K_M`.
-   * **Live Hugging Face Search**: Search Hugging Face Hub repositories live (e.g. `Qwen2.5-7B`, `Llama-3.1`), inspect `.gguf` quantization files available in the repo, and trigger downloads into `./models/`.
-   * **Real-Time Progress & Storage Manager**: Visual progress bar tracking download state and local storage manager to view/delete downloaded GGUF files.
+   * **Live Hugging Face Search**: Search Hugging Face Hub repositories live (e.g. `Qwen2.5-7B`, `Llama-3.1`), inspect `.gguf` quantization files, and trigger batch downloads into `./models/`.
 
-3. **⚡ LLM Evaluation Engine (`eval_real_llm`)**:
-   * Asynchronous non-blocking execution runner with Start/Stop controls.
+3. **🖥️ GPU & Hardware Config (AMD / NVIDIA)**:
+   * **Hardware Diagnostics**: Displays detected GPU card model, total/free VRAM, driver version, and recommended acceleration backend.
+   * **AMD Driver Settings**: Interactive selector for AMD `HSA_OVERRIDE_GFX_VERSION` (`10.3.0`, `11.0.0`, `9.0.0`) and `HIP_VISIBLE_DEVICES`.
+   * **Build Guide**: Embedded compilation and environment setup guide for ROCm and Vulkan.
+
+4. **⚡ LLM Evaluation Engine (`eval_real_llm`)**:
+   * Asynchronous non-blocking execution runner on **HumanEvalPlus (EvalPlus)** benchmark prompts with $80\times$ expanded test coverage.
    * **Real-Time Progress Bar**: Tracks active prompt progress (`Prompt X/20`) and quantization level steps (`FP16` → `Q8_0` → `Q6_K` → `Q5_K_M` → `Q4_K_M`).
    * **Live Output Console**: Live log streaming terminal window watching `./logs/real_eval_execution.log`.
-   * **Live Metric Charts**: Dynamic Plotly bar charts comparing average unit test pass rates (UR) and prompt-by-prompt performance line charts.
+   * **Live Metric Charts**: Dynamic Plotly bar charts comparing average unit test pass rates (UR) and per-prompt HumanEvalPlus performance charts.
 
-4. **📊 Statistical Summary & Hardware Recommender (`run_real_stat`)**:
+5. **📊 Statistical Summary & Hardware Recommender (`run_real_stat`)**:
    * **Statistical Test Dashboard**: Instant visual cards for *Friedman Chi-Squared ($\chi^2$)*, *$p$-value*, *Kendall's W Effect Size*, and *Degradation Elbow Point*.
    * **Dunn's Post-Hoc Heatmap**: Interactive Plotly heatmap displaying Bonferroni-adjusted pairwise $p$-values.
    * **Interactive Hardware Recommendation Engine**: Dynamic VRAM slider ($1.0\text{ GB} - 32.0\text{ GB}$) evaluating model suitability and quantization trade-offs for custom GPU hardware.
@@ -131,21 +147,17 @@ Run the script below to download `Qwen2.5-7B-Instruct` model weights across 5 qu
 ```bash
 python scripts/download_models.py
 ```
-*Note: Download time depends on your internet speed (total size: ~39 GB).*
 
 ---
 
 ### Step 2: Run Real LLM Evaluation & Sandboxed Code Execution
-Run the LLM inference evaluation and unit test execution inside the isolated sandbox:
+Run the LLM inference evaluation on **HumanEvalPlus** problems inside the isolated sandbox:
 
 ```bash
 python eval_real_llm.py
 ```
-* **What it does**: Loads each model variant from `./models/`, generates Python code for HumanEval prompts, and validates execution inside a sandboxed environment.
+* **What it does**: Loads each model variant from `./models/`, generates Python code for HumanEvalPlus benchmark prompts, and validates execution against expanded fuzzed unit assertions (`base_input` + `plus_input`) inside a sandboxed environment.
 * **Output**: Evaluation pass-rate matrix is saved to `./results/real_eval_matrix.json`.
-
-> [!TIP]
-> For a quick trial run, edit `eval_real_llm.py` and change `NUM_PROMPTS = 20` to `NUM_PROMPTS = 2`.
 
 ---
 
@@ -163,27 +175,6 @@ python run_real_stats.py
 
 ---
 
-### 💡 (Optional) Synthetic Simulation Mode
-To test the entire statistical pipeline and sandboxed engine instantly without downloading physical model weights:
-
-```bash
-python main.py
-```
-
----
-
-## 🛠️ Model & Quantization Customization Guide
-
-To evaluate different model families (e.g., `Llama-3.1-8B-Instruct`) or alternative quantization levels (e.g., `Q3_K_M`):
-
-1. **Modify `scripts/download_models.py`**:
-   * Update the Hugging Face repository ID and `.gguf` filenames in `QUANT_CONFIGS`.
-   * Update local target names in `TARGET_FILENAMES`.
-2. **Modify `eval_real_llm.py`**:
-   * Update `MODELS_MAP` paths to match the new filenames in `./models/`.
-
----
-
 ## 📁 Project Directory Structure
 
 ```text
@@ -192,7 +183,7 @@ To evaluate different model families (e.g., `Llama-3.1-8B-Instruct`) or alternat
 │   ├── execution_engine.py   # Isolated code execution sandbox
 │   └── recommender.py        # Hardware-aware VRAM recommendation engine
 ├── data/
-│   └── dataset_loader.py     # HumanEval benchmark dataset loader
+│   └── dataset_loader.py     # HumanEvalPlus (EvalPlus) benchmark dataset loader
 ├── models/                   # Directory storing GGUF model weights
 ├── results/
 │   └── real_eval_matrix.json # Generated evaluation score matrix
@@ -201,12 +192,14 @@ To evaluate different model families (e.g., `Llama-3.1-8B-Instruct`) or alternat
 ├── stats/
 │   └── stat_engine.py        # Inferential statistical engine (Friedman, Kendall, Dunn)
 ├── utils/
+│   ├── gpu_helper.py         # Multi-vendor GPU hardware detection & AMD ROCm/HIP driver helper
 │   ├── hf_helper.py          # Live Hugging Face search & GGUF file inspector
 │   └── process_runner.py     # Asynchronous process runner with real-time log parsing
 ├── app.py                    # Interactive Streamlit Web UI Application
 ├── eval_real_llm.py          # Primary real LLM evaluation pipeline script
 ├── run_real_stats.py         # Primary statistical & recommendation execution script
 ├── main.py                   # End-to-end synthetic simulation prototype script
+├── test_framework.py         # Framework unit test suite
 ├── requirements.txt          # Python package dependencies
 └── README.md                 # Framework documentation
 ```
@@ -215,4 +208,3 @@ To evaluate different model families (e.g., `Llama-3.1-8B-Instruct`) or alternat
 
 ## 📜 License
 This project is open-source and intended for research on LLM quantization performance trade-offs. Feel free to modify and build upon it.
-
