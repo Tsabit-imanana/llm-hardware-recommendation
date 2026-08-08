@@ -4,7 +4,25 @@ from scipy import stats
 # pyrefly: ignore [missing-import]
 import scikit_posthocs as sp
 
-QUANT_LEVELS_ORDER = ["FP16", "Q8_0", "Q6_K", "Q5_K_M", "Q4_K_M"]
+STANDARD_QUANT_PRECISION_ORDER = [
+    "F32", "FP16", "Q8_0", "Q6_K", 
+    "Q5_K_M", "Q5_K_S", "Q5_0", 
+    "Q4_K_M", "Q4_K_S", "Q4_0", "IQ4_NL", "IQ4_XS",
+    "Q3_K_L", "Q3_K_M", "Q3_K_S", "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS",
+    "Q2_K", "IQ2_M", "IQ2_S", "IQ2_XS", "IQ2_XXS", "IQ1_M", "IQ1_S"
+]
+
+QUANT_LEVELS_ORDER = STANDARD_QUANT_PRECISION_ORDER
+
+def get_quant_order(present_levels: list[str]) -> list[str]:
+    """Sort present quantization levels in descending order of precision."""
+    def sort_key(q):
+        q_upper = q.upper()
+        if q_upper in STANDARD_QUANT_PRECISION_ORDER:
+            return (0, STANDARD_QUANT_PRECISION_ORDER.index(q_upper))
+        return (1, q)
+
+    return sorted(present_levels, key=sort_key)
 
 def analyze_quantization_impact(matrix_data: dict | pd.DataFrame) -> dict:
     """
@@ -29,11 +47,12 @@ def analyze_quantization_impact(matrix_data: dict | pd.DataFrame) -> dict:
     else:
         df = matrix_data.copy()
 
-    # Reorder columns to standard quantization precision order if present
-    present_levels = [q for q in QUANT_LEVELS_ORDER if q in df.columns]
+    # Reorder columns to standard quantization precision order
+    present_levels = get_quant_order(list(df.columns))
+
     if len(present_levels) < 2:
-        raise ValueError(f"Matrix data must contain at least 2 quantization levels from {QUANT_LEVELS_ORDER}")
-    
+        raise ValueError(f"Matrix data must contain at least 2 quantization levels or models to perform statistical evaluation.")
+
     df = df[present_levels]
     N, m = df.shape  # N = number of prompts, m = number of quantization levels
 
@@ -116,5 +135,6 @@ def analyze_quantization_impact(matrix_data: dict | pd.DataFrame) -> dict:
         "dunn_posthoc": posthoc_df,
         "elbow_point": elbow_point,
         "baseline": baseline,
+        "quant_order": present_levels,
         "mean_pass_rates": df.mean().to_dict()
     }

@@ -19,6 +19,7 @@ if PROJECT_ROOT not in sys.path:
 from utils.hf_helper import (
     search_hf_models,
     list_repo_gguf_files,
+    list_repo_gguf_files_info,
     get_local_models,
     download_hf_file
 )
@@ -129,6 +130,7 @@ def render_sidebar():
         [
             "🔍 Project Overview & Scanner",
             "📥 Model Downloader (Hugging Face)",
+            "🖥️ GPU & Hardware Config (AMD / NVIDIA)",
             "⚡ LLM Evaluation (eval_real_llm)",
             "📊 Statistical Summary (run_real_stat)"
         ]
@@ -137,24 +139,15 @@ def render_sidebar():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🖥️ Hardware Context")
     
-    # Try detecting GPU / CUDA
-    gpu_available = False
-    vram_str = "N/A"
     try:
-        # pyrefly: ignore [missing-import]
-        import torch
-        if torch.cuda.is_available():
-            gpu_available = True
-            gpu_name = torch.cuda.get_device_name(0)
-            vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-            vram_str = f"{gpu_name} ({vram_gb:.1f} GB)"
+        from utils.gpu_helper import detect_gpu_hardware
+        hw = detect_gpu_hardware()
+        if hw["vendor"] != "CPU":
+            st.sidebar.success(f"GPU Detected:\n**{hw['vendor']}** - {hw['gpu_name'][:25]}\nVRAM: {hw['vram_free_gb']} GB Free / {hw['vram_total_gb']} GB Total\nBackend: **{hw['recommended_backend']}**")
+        else:
+            st.sidebar.warning(f"CPU Mode / Fallback\nRAM Free: {hw['vram_free_gb']} GB / {hw['vram_total_gb']} GB")
     except Exception:
-        pass
-
-    if gpu_available:
-        st.sidebar.success(f"GPU Detected:\n{vram_str}")
-    else:
-        st.sidebar.warning("GPU / CUDA: CPU Mode / Standard Offload")
+        st.sidebar.info("Hardware Detection Unavailable")
 
     st.sidebar.markdown("---")
     st.sidebar.info("💡 **Local LLM Recommendation Framework**\nReal-time evaluation, quantization degradation stats, and hardware matching.")
@@ -207,7 +200,7 @@ def view_project_scanner():
     st.markdown("---")
     st.subheader("📜 Core Project Scripts & Modules")
     script_summary = [
-        {"Script / Module": "eval_real_llm.py", "Purpose": "Evaluates llama-cpp GGUF quantizations on HumanEval dataset prompts.", "Status": "Ready"},
+        {"Script / Module": "eval_real_llm.py", "Purpose": "Evaluates llama-cpp GGUF quantizations on HumanEvalPlus (EvalPlus) benchmark prompts.", "Status": "Ready"},
         {"Script / Module": "run_real_stats.py", "Purpose": "Computes Friedman test, Kendall's W, Dunn post-hoc matrix, and recommendations.", "Status": "Ready"},
         {"Script / Module": "scripts/download_models.py", "Purpose": "Downloads default Qwen2.5 GGUF quantizations from Hugging Face.", "Status": "Ready"},
         {"Script / Module": "core/execution_engine.py", "Purpose": "Sandboxed Python code execution with assertion verification.", "Status": "Ready"},
@@ -217,19 +210,44 @@ def view_project_scanner():
     st.dataframe(pd.DataFrame(script_summary), use_container_width=True, hide_index=True)
 
 
+def get_quant_label(filename: str) -> str:
+    """Helper to derive clean quantization label from model filename."""
+    fn_lower = filename.lower()
+    quant_patterns = [
+        "fp16", "f32", "q8_0", "q6_k", "q5_k_m", "q5_k_s", "q5_0", "q4_k_m", "q4_k_s", "q4_0", 
+        "q3_k_l", "q3_k_m", "q3_k_s", "q2_k", 
+        "iq4_xs", "iq4_nl", "iq3_xxs", "iq3_xs", "iq3_s", "iq3_m", "iq2_xxs", "iq2_xs", "iq2_s", "iq2_m", "iq1_s", "iq1_m"
+    ]
+    for q in quant_patterns:
+        if q in fn_lower:
+            return q.upper()
+    clean = os.path.splitext(filename)[0]
+    return clean.replace(" ", "_")
+
+
+
 def view_model_downloader():
     st.markdown('<div class="main-header">📥 Hugging Face Model Downloader</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Choose models live from Hugging Face hub repositories, inspect `.gguf` files, and track real-time download progress.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Search model repositories on Hugging Face, preview all available quantized model variants, and batch download.</div>', unsafe_allow_html=True)
 
     dl_state = download_runner.get_state()
     
-    # Download Progress Banner
+    # Download Progress Banner & Live Terminal
     if dl_state["is_running"]:
-        st.info(f"⏳ **Active Download**: {dl_state['status']}")
-        st.progress(0.5)
-        if st.button("🚫 Cancel Download"):
+        p_val = dl_state["progress"]
+        pct_int = int(p_val * 100)
+        st.info(f"⏳ **Active Download Process**: {dl_state['status']}")
+        st.progress(p_val)
+        st.caption(f"**Download Progress**: `{pct_int}%` | **Status**: {dl_state['status']}")
+        
+        if st.button("🚫 Cancel Active Download"):
             download_runner.stop_task()
             st.rerun()
+            
+        st.subheader("📜 Live Download Output Terminal")
+        logs_text = "\n".join(dl_state["logs"][-25:]) if dl_state["logs"] else "Initializing download process..."
+        st.markdown(f'<div class="log-terminal">{logs_text}</div>', unsafe_allow_html=True)
+        st.markdown("---")
 
     tab1, tab2, tab3 = st.tabs(["🔥 Preset GGUF Quantizations", "🌐 Live Hugging Face Search", "💾 Downloaded Models Manager"])
 
@@ -265,14 +283,14 @@ def view_model_downloader():
     with tab2:
         st.subheader("Search Hugging Face Model Repositories")
         
-        search_query = st.text_input("🔍 Search Model (e.g. `Qwen2.5-7B`, `Llama-3`, `GGUF`)", value="GGUF")
+        search_query = st.text_input("🔍 Search Model Repositories (e.g. `Qwen2.5-7B`, `Llama-3`, `GGUF`)", value="GGUF")
         
-        if st.button("Search Hugging Face Hub"):
+        if st.button("🔍 Search Hugging Face Hub"):
             with st.spinner("Searching Hugging Face API..."):
-                st.session_state["hf_search_results"] = search_hf_models(search_query, limit=10)
+                st.session_state["hf_search_results"] = search_hf_models(search_query, limit=12)
         
         if "hf_search_results" not in st.session_state:
-            st.session_state["hf_search_results"] = search_hf_models("GGUF", limit=10)
+            st.session_state["hf_search_results"] = search_hf_models("GGUF", limit=12)
         
         hf_results = st.session_state["hf_search_results"]
         
@@ -281,30 +299,42 @@ def view_model_downloader():
             selected_repo = st.selectbox("Select Model Repository:", repo_options)
             
             if selected_repo:
-                st.caption(f"Fetching available `.gguf` files from repo: `{selected_repo}`")
-                gguf_files = list_repo_gguf_files(selected_repo)
+                st.caption(f"Inspecting repository `.gguf` quantized model variants for: `{selected_repo}`")
                 
-                if gguf_files:
-                    selected_file = st.selectbox("Select GGUF file to download:", gguf_files)
-                    custom_target_name = st.text_input("Local Target Filename in `./models/`:", value=selected_file)
+                with st.spinner(f"Fetching quantized files list for {selected_repo}..."):
+                    gguf_info_list = list_repo_gguf_files_info(selected_repo)
+                
+                if gguf_info_list:
+                    all_filenames = [g["filename"] for g in gguf_info_list]
                     
-                    if st.button(f"⬇️ Start Downloading {selected_file}"):
-                        def update_progress(p, msg):
-                            st.toast(msg)
-                        
-                        with st.spinner(f"Downloading {selected_file} from {selected_repo}..."):
-                            success, path, msg = download_hf_file(
-                                repo_id=selected_repo,
-                                filename=selected_file,
-                                custom_name=custom_target_name,
-                                progress_callback=update_progress
-                            )
-                            if success:
-                                st.success(f"✓ Saved to {path}")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error(f"Failed to download: {msg}")
+                    st.markdown("### 📋 Quantization Models Confirmation (Pre-Download List)")
+                    st.info("The repository contains the following quantized model files. **All detected quantization models are selected by default** so you can automatically download the complete model suite for evaluation.")
+                    
+                    # Selection Form / Multi-select
+                    selected_files = st.multiselect(
+                        "Confirm / Select Quantized Model Files to Download:",
+                        options=all_filenames,
+                        default=all_filenames,
+                        key="selected_quants_multiselect"
+                    )
+                    
+                    # Display breakdown table
+                    df_preview = pd.DataFrame([g for g in gguf_info_list if g["filename"] in selected_files])
+                    if not df_preview.empty:
+                        st.dataframe(df_preview[["filename", "size_gb"]].rename(columns={"filename": "Quantized Model File", "size_gb": "Est. Size (GB)"}), use_container_width=True, hide_index=True)
+                    
+                    if selected_files:
+                        if st.button(f"🚀 Confirm & Download All Selected Quantized Models ({len(selected_files)} Files)", type="primary", use_container_width=True):
+                            cfg_path = os.path.join(PROJECT_ROOT, "logs", "download_config.json")
+                            os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+                            with open(cfg_path, "w", encoding="utf-8") as f:
+                                json.dump({"repo_id": selected_repo, "files": selected_files}, f, indent=2)
+                            
+                            cmd = [sys.executable, "scripts/download_repo_quants.py", "--config", cfg_path]
+                            download_runner.start_task(cmd, cwd=PROJECT_ROOT)
+                            st.rerun()
+                    else:
+                        st.warning("Please select at least one quantized model file to download.")
                 else:
                     st.warning(f"No `.gguf` files found directly in root of `{selected_repo}`. Try another GGUF repo like `bartowski/Qwen2.5-7B-Instruct-GGUF`.")
 
@@ -331,19 +361,84 @@ def view_model_downloader():
         else:
             st.info("No model files in `./models/` directory.")
 
+    if dl_state["is_running"]:
+        time.sleep(1)
+        st.rerun()
+
 
 def view_eval_runner():
     st.markdown('<div class="main-header">⚡ Real LLM Evaluation Engine (eval_real_llm)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Run deterministic HumanEval code generation across quantization levels with real-time progress & pass-rate metric visualizer.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Select target models, configure prompt sample size, and run HumanEvalPlus (EvalPlus) code generation evaluation.</div>', unsafe_allow_html=True)
 
     state = eval_runner.get_state()
     is_running = state["is_running"]
 
+    local_models = get_local_models()
+    
+    st.markdown("### 🎯 Choose Models & Prompts for Evaluation")
+    
+    if local_models:
+        all_model_filenames = [m["filename"] for m in local_models]
+        
+        col_cfg1, col_cfg2 = st.columns([2, 1])
+        with col_cfg1:
+            selected_model_files = st.multiselect(
+                "Choose Models to Evaluate:",
+                options=all_model_filenames,
+                default=all_model_filenames,
+                help="Select which downloaded GGUF models in ./models/ to benchmark."
+            )
+        with col_cfg2:
+            num_prompts = st.slider(
+                "Prompt Sample Size (N):",
+                min_value=1,
+                max_value=20,
+                value=20,
+                help="Number of HumanEvalPlus (EvalPlus) benchmark prompts to evaluate per model variant."
+            )
+        
+        # Build mapping & display table
+        models_map_preview = {}
+        for fname in selected_model_files:
+            m_path = f"./models/{fname}"
+            label = get_quant_label(fname)
+            # Ensure unique keys if duplicate labels exist
+            if label in models_map_preview:
+                label = f"{label}_{fname[:6]}"
+            models_map_preview[label] = m_path
+
+        if selected_model_files:
+            with st.expander("🔍 View Selected Evaluation Mapping", expanded=False):
+                df_map = pd.DataFrame([
+                    {"Quantization Label": k, "Model Path": v, "File Status": "Exists" if os.path.exists(v) else "Missing"}
+                    for k, v in models_map_preview.items()
+                ])
+                st.dataframe(df_map, use_container_width=True, hide_index=True)
+        else:
+            st.warning("⚠️ Please select at least one model file to evaluate.")
+    else:
+        st.warning("⚠️ No downloaded `.gguf` model files found in `./models/`. Go to the Model Downloader tab to download models first.")
+        selected_model_files = []
+        models_map_preview = {}
+        num_prompts = 20
+
+    st.markdown("---")
+
     # Action Toolbar
-    col_btn1, col_btn2, col_status = st.columns([1.5, 1.5, 5])
+    col_btn1, col_btn2, col_status = st.columns([2, 1.5, 5])
     with col_btn1:
         if not is_running:
-            if st.button("▶️ Start Evaluation", type="primary", use_container_width=True):
+            btn_disabled = len(selected_model_files) == 0
+            if st.button("▶️ Start Evaluation with Selected Models", type="primary", use_container_width=True, disabled=btn_disabled):
+                # Save eval_config.json
+                cfg_path = os.path.join(PROJECT_ROOT, "results", "eval_config.json")
+                os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "models_map": models_map_preview,
+                        "num_prompts": num_prompts
+                    }, f, indent=2)
+                
                 cmd = [sys.executable, "eval_real_llm.py"]
                 eval_runner.start_task(cmd, cwd=PROJECT_ROOT)
                 st.rerun()
@@ -422,7 +517,7 @@ def view_eval_runner():
                     y="Pass Rate",
                     color="Quantization",
                     markers=True,
-                    title="Per-Prompt Pass Rate (HumanEval Suite)"
+                    title="Per-Prompt Pass Rate (HumanEvalPlus Benchmark)"
                 )
                 fig_line.update_layout(template="plotly_dark", height=350)
                 st.plotly_chart(fig_line, use_container_width=True)
@@ -541,6 +636,91 @@ def view_stat_summary():
         st.dataframe(pd.DataFrame(lookup_rows), use_container_width=True, hide_index=True)
 
 
+def view_hardware_config():
+    st.markdown('<div class="main-header">🖥️ GPU & Hardware Driver Configuration</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Inspect system GPU hardware, configure AMD ROCm/HIP driver parameters, and manage hardware acceleration backends.</div>', unsafe_allow_html=True)
+
+    from utils.gpu_helper import detect_gpu_hardware, configure_amd_gpu_env, AMD_GFX_TARGETS
+    hw = detect_gpu_hardware()
+
+    col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+    with col_h1:
+        st.metric("Detected Vendor", hw["vendor"], delta="Active")
+    with col_h2:
+        st.metric("GPU Model", hw["gpu_name"][:20])
+    with col_h3:
+        st.metric("VRAM Total", f"{hw['vram_total_gb']} GB")
+    with col_h4:
+        st.metric("Recommended Backend", hw["recommended_backend"])
+
+    st.markdown("---")
+    st.markdown("### 🛠️ AMD ROCm / HIP Driver Settings")
+    st.write("Configure environment variables for AMD Radeon GPUs (RDNA2, RDNA3, Vega) running `llama-cpp-python`.")
+
+    # Read current config if saved
+    current_gfx = ""
+    current_hip = "0"
+    if os.path.exists("./results/eval_config.json"):
+        try:
+            with open("./results/eval_config.json", "r") as f:
+                cfg_saved = json.load(f)
+                current_gfx = cfg_saved.get("hsa_override_gfx_version", "")
+                current_hip = cfg_saved.get("hip_visible_devices", "0")
+        except Exception:
+            pass
+
+    col_amd1, col_amd2 = st.columns(2)
+    with col_amd1:
+        gfx_labels = list(AMD_GFX_TARGETS.keys())
+        default_idx = 0
+        for i, (k, v) in enumerate(AMD_GFX_TARGETS.items()):
+            if v == current_gfx:
+                default_idx = i
+                break
+        selected_gfx_label = st.selectbox(
+            "HSA_OVERRIDE_GFX_VERSION Target:",
+            options=gfx_labels,
+            index=default_idx,
+            help="Override GFX architecture version required for consumer AMD Radeon RX GPUs on ROCm."
+        )
+        selected_gfx_val = AMD_GFX_TARGETS[selected_gfx_label]
+        
+    with col_amd2:
+        hip_device_id = st.text_input("HIP_VISIBLE_DEVICES:", value=current_hip, help="GPU index to expose to HIP/ROCm runtime.")
+
+    if st.button("💾 Apply & Save AMD GPU Driver Configuration", type="primary"):
+        configure_amd_gpu_env(gfx_version=selected_gfx_val, hip_device=hip_device_id)
+        cfg = {}
+        if os.path.exists("./results/eval_config.json"):
+            try:
+                with open("./results/eval_config.json", "r") as f:
+                    cfg = json.load(f)
+            except Exception:
+                pass
+        cfg["hsa_override_gfx_version"] = selected_gfx_val
+        cfg["hip_visible_devices"] = hip_device_id
+        os.makedirs("./results", exist_ok=True)
+        with open("./results/eval_config.json", "w") as f:
+            json.dump(cfg, f, indent=4)
+        st.success(f"✓ Applied AMD Configuration: HSA_OVERRIDE_GFX_VERSION='{selected_gfx_val}', HIP_VISIBLE_DEVICES='{hip_device_id}'")
+
+    st.markdown("---")
+    st.markdown("### 📚 Build & Installation Guide for AMD Acceleration")
+    with st.expander("📖 View Installation Commands for AMD GPUs"):
+        st.code("""
+# 1. Install llama-cpp-python with AMD ROCm (HIP) Acceleration:
+CMAKE_ARGS="-DGGML_HIPBLAS=on" HSA_OVERRIDE_GFX_VERSION=10.3.0 pip install llama-cpp-python --force-reinstall --no-cache-dir
+
+# 2. Alternative: Install with Universal AMD Vulkan Acceleration:
+CMAKE_ARGS="-DGGML_VULKAN=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+
+# 3. Environment Variables for Terminal Sessions:
+export HSA_OVERRIDE_GFX_VERSION=10.3.0  # For RX 6000 series (RDNA2)
+export HSA_OVERRIDE_GFX_VERSION=11.0.0  # For RX 7000 series (RDNA3)
+export HIP_VISIBLE_DEVICES=0
+""", language="bash")
+
+
 def main():
     selected_view = render_sidebar()
 
@@ -548,6 +728,8 @@ def main():
         view_project_scanner()
     elif selected_view == "📥 Model Downloader (Hugging Face)":
         view_model_downloader()
+    elif selected_view == "🖥️ GPU & Hardware Config (AMD / NVIDIA)":
+        view_hardware_config()
     elif selected_view == "⚡ LLM Evaluation (eval_real_llm)":
         view_eval_runner()
     elif selected_view == "📊 Statistical Summary (run_real_stat)":

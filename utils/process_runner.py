@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import subprocess
 import threading
 import queue
@@ -75,34 +76,67 @@ class BackgroundTaskRunner:
     def _parse_line(self, line: str):
         """Parse log lines to extract real-time progress for eval and download scripts."""
         # Quant level detection: Running Evaluation for Quantization: Q8_0
-        quant_match = re.search(r"Running Evaluation for Quantization:\s*([A-Za-z0-9_]+)", line)
+        quant_match = re.search(r"Running Evaluation for Quantization:\s*(.+)$", line)
         if quant_match:
-            self.current_quant = quant_match.group(1)
+            self.current_quant = quant_match.group(1).strip()
             self.current_status = f"Evaluating Quantization: {self.current_quant}"
             return
 
         # Prompt progress detection: [Q8_0] Prompt 5/20 (HumanEval/0) generating code...
-        prompt_match = re.search(r"\[([A-Za-z0-9_]+)\]\s+Prompt\s+(\d+)/(\d+)", line)
+        prompt_match = re.search(r"\[(.+?)\]\s+Prompt\s+(\d+)/(\d+)", line)
         if prompt_match:
-            self.current_quant = prompt_match.group(1)
+            self.current_quant = prompt_match.group(1).strip()
             curr = int(prompt_match.group(2))
             total = int(prompt_match.group(3))
             self.current_prompt_index = curr
             self.total_prompts = total
             
-            # Map quantization to step fraction
-            quants = ["FP16", "Q8_0", "Q6_K", "Q5_K_M", "Q4_K_M"]
-            q_idx = quants.index(self.current_quant) if self.current_quant in quants else 0
-            base_p = q_idx / len(quants)
-            within_p = (curr / total) * (1.0 / len(quants))
+            # Read total models count from eval_config.json if available
+            total_models = 5
+            q_idx = 0
+            try:
+                cfg_path = "./results/eval_config.json"
+                if os.path.exists(cfg_path):
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                        if "models_map" in cfg and cfg["models_map"]:
+                            models_keys = list(cfg["models_map"].keys())
+                            total_models = max(len(models_keys), 1)
+                            if self.current_quant in models_keys:
+                                q_idx = models_keys.index(self.current_quant)
+            except Exception:
+                q_idx = 0
+
+            base_p = q_idx / total_models
+            within_p = (curr / total) * (1.0 / total_models)
             self.progress_percentage = min(0.99, base_p + within_p)
             self.current_status = f"Evaluating {self.current_quant} - Prompt {curr}/{total}"
             return
 
-        # Download detection: Downloading FP16... or Successfully downloaded
-        if "Downloading " in line:
+        # Download percentage progress detection: PROGRESS: [qwen2.5-7b-instruct-q4_k_m.gguf] 45% (1980.0 MB / 4400.0 MB)
+        progress_match = re.search(r"PROGRESS:\s*\[(.*?)\]\s*(\d+)%\s*\((.*?)\)", line)
+        if progress_match:
+            fname = progress_match.group(1)
+            pct_val = int(progress_match.group(2))
+            details = progress_match.group(3)
+            self.progress_percentage = pct_val / 100.0
+            self.current_status = f"Downloading {fname}: {pct_val}% ({details})"
+            return
+
+        # Batch item detection: [1/5] STARTING DOWNLOAD: filename.gguf
+        batch_match = re.search(r"\[(\d+)/(\d+)\]\s+STARTING DOWNLOAD:\s*(.*)", line)
+        if batch_match:
+            idx = int(batch_match.group(1))
+            total = int(batch_match.group(2))
+            fname = batch_match.group(3).strip()
+            self.progress_percentage = (idx - 1) / total
+            self.current_status = f"[{idx}/{total}] Preparing download for {fname}..."
+            return
+
+        # General download status line
+        if "Downloading " in line or "STARTING DOWNLOAD" in line:
             self.current_status = line.strip()
-        elif "✓" in line or "✗" in line:
+        elif "✓" in line or "❌" in line or "✗" in line:
             self.current_status = line.strip()
 
     def stop_task(self):

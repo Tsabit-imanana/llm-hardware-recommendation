@@ -1,7 +1,14 @@
 import os
+import sys
 import shutil
 # pyrefly: ignore [missing-import]
 from huggingface_hub import hf_hub_download
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from utils.hf_helper import DownloadProgressLogger
 
 QUANT_CONFIGS = {
     "FP16": [
@@ -55,7 +62,8 @@ def main():
                         repo_id=repo_id,
                         filename=remote_spec,
                         local_dir=SAVE_DIR,
-                        local_dir_use_symlinks=False
+                        local_dir_use_symlinks=False,
+                        tqdm_class=DownloadProgressLogger
                     )
                     if os.path.basename(downloaded_path) != target_name:
                         shutil.move(downloaded_path, target_path)
@@ -69,7 +77,8 @@ def main():
                             repo_id=repo_id,
                             filename=shard_file,
                             local_dir=SAVE_DIR,
-                            local_dir_use_symlinks=False
+                            local_dir_use_symlinks=False,
+                            tqdm_class=DownloadProgressLogger
                         )
                         shard_paths.append(p)
                     # For sharded files, point target symlink/copy to 00001

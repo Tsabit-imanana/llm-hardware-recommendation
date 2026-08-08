@@ -60,5 +60,14 @@ class TestLocalLLMFramework(unittest.TestCase):
         self.assertIsNone(rec["recommended_quantization"])
 
 
+    def test_humaneval_plus_loader(self):
+        from data.dataset_loader import load_humaneval_plus_subset
+        subset = load_humaneval_plus_subset(limit=3)
+        self.assertEqual(len(subset), 3)
+        self.assertIn("task_id", subset[0])
+        self.assertIn("prompt", subset[0])
+        self.assertIn("entry_point", subset[0])
+
+
 if __name__ == "__main__":
     unittest.main()

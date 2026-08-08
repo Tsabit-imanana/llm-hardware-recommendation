@@ -8,3 +8,4 @@ llama-cpp-python
 git+https://github.com/openai/human-eval.git
 streamlit>=1.30.0
 plotly>=5.18.0
+evalplus>=0.8.0
