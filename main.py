@@ -8,7 +8,7 @@ from tabulate import tabulate
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.execution_engine import run_code_in_sandbox
-from stats.stat_engine import analyze_quantization_impact, QUANT_LEVELS_ORDER
+from stats.stat_engine import analyze_quantization_impact, get_quant_order
 from core.recommender import recommend_model, DEFAULT_VRAM_LOOKUP_7B
 
 
@@ -92,12 +92,12 @@ def main():
     print("=" * 80)
     
     matrix_stats = []
-    for q in QUANT_LEVELS_ORDER:
+    for q in get_quant_order(list(eval_matrix.columns)):
         mean_ur = eval_matrix[q].mean()
         std_ur = eval_matrix[q].std()
         min_ur = eval_matrix[q].min()
         max_ur = eval_matrix[q].max()
-        matrix_stats.append([q, f"{mean_ur:.4f}", f"{std_ur:.4f}", f"{min_ur:.4f}", f"{max_ur:.4f}", DEFAULT_VRAM_LOOKUP_7B[q]])
+        matrix_stats.append([q, f"{mean_ur:.4f}", f"{std_ur:.4f}", f"{min_ur:.4f}", f"{max_ur:.4f}", DEFAULT_VRAM_LOOKUP_7B.get(q, "N/A")])
         
     print(tabulate(matrix_stats, headers=["Quantization Level", "Mean UR", "Std Dev", "Min UR", "Max UR", "Est VRAM (GB)"], tablefmt="grid"))
     print()

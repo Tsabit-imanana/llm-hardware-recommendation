@@ -42,6 +42,27 @@ def run_code_in_sandbox(
     passed_count = 0
     k_total = len(test_assertions)
 
+    # Quick syntax pre-check on generated_code to fail-fast if candidate code is unparseable
+    try:
+        compile(generated_code, "<candidate>", "exec")
+    except SyntaxError as e:
+        syntax_err = f"SyntaxError: {str(e)}"
+        results = [
+            {
+                "test_index": idx + 1,
+                "assertion": assertion,
+                "status": 0,
+                "error": syntax_err
+            }
+            for idx, assertion in enumerate(test_assertions)
+        ]
+        return {
+            "unit_test_pass_rate": 0.0,
+            "results": results,
+            "total_tests": k_total,
+            "passed_tests": 0
+        }
+
     for idx, assertion in enumerate(test_assertions):
         # Prepare combined script content
         script_content = f"{generated_code}\n\n# Unit Assertion {idx+1}\n{assertion}\n"

@@ -4,7 +4,7 @@ import json
 import pandas as pd
 # pyrefly: ignore [missing-import]
 from llama_cpp import Llama
-from data.dataset_loader import load_humaneval_plus_subset
+from data.dataset_loader import load_humaneval_subset
 from core.execution_engine import run_code_in_sandbox
 
 class TeeLogger:
@@ -87,7 +87,7 @@ def extract_python_code(raw_response: str) -> str:
 
 def run_evaluation():
     models_map, num_prompts = load_eval_config()
-    dataset = load_humaneval_plus_subset(limit=num_prompts)
+    dataset = load_humaneval_subset(limit=num_prompts)
     results_matrix = {quant: [] for quant in models_map.keys()}
     
     for quant_level, model_path in models_map.items():
@@ -129,14 +129,16 @@ def run_evaluation():
             
             # Reconstruct full script
             full_code = f"{item['prompt']}\n{gen_code}"
-            assertions = [item["test_code"]]
+            assertions = item.get("test_assertions") or [item["test_code"]]
             
             # Execute in sandbox using existing execution engine
             eval_res = run_code_in_sandbox(full_code, assertions, timeout_sec=5.0)
             pass_rate = eval_res["unit_test_pass_rate"]
+            passed_k = eval_res["passed_tests"]
+            total_k = eval_res["total_tests"]
             
             results_matrix[quant_level].append(pass_rate)
-            print(f"[{quant_level}] Prompt {idx+1}/{num_prompts} ({item['task_id']}) -> UR: {pass_rate:.2f}", flush=True)
+            print(f"[{quant_level}] Prompt {idx+1}/{num_prompts} ({item['task_id']}) -> Passed {passed_k}/{total_k} assertions (UR: {pass_rate:.2f})", flush=True)
 
     # Save real matrix output to JSON
     os.makedirs("./results", exist_ok=True)

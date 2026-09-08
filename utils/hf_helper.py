@@ -38,25 +38,52 @@ DEFAULT_GGUF_MODELS = [
     "city96/ComfyUI-GGUF"
 ]
 
-def search_hf_models(query: str = "", limit: int = 15):
+def search_hf_models(query: str = "", limit: int = 25):
     """
     Search Hugging Face models using HfApi.
+    Supports keywords, direct repository IDs ('owner/repo'), and full Hugging Face URLs.
     """
     api = HfApi()
     try:
-        if not query.strip():
+        query = query.strip()
+        if not query:
             # Return popular default GGUF model repositories
             return [{"id": repo, "downloads": 10000, "likes": 500} for repo in DEFAULT_GGUF_MODELS]
-        
-        models = api.list_models(search=query, limit=limit, sort="downloads")
+
+        # Strip URL prefix if user pasted a Hugging Face URL
+        if "huggingface.co/" in query:
+            query = query.split("huggingface.co/")[-1].strip("/")
+            parts = query.split("/")
+            if len(parts) >= 2:
+                query = f"{parts[0]}/{parts[1]}"
+
         results = []
+        seen_ids = set()
+
+        # If query is a direct repo ID (owner/repo), fetch its exact info first
+        if "/" in query and len(query.split("/")) == 2:
+            try:
+                info = api.model_info(query)
+                results.append({
+                    "id": info.id,
+                    "downloads": getattr(info, "downloads", 0),
+                    "likes": getattr(info, "likes", 0),
+                    "tags": getattr(info, "tags", [])
+                })
+                seen_ids.add(info.id)
+            except Exception:
+                pass
+
+        models = api.list_models(search=query, limit=limit, sort="downloads")
         for m in models:
-            results.append({
-                "id": m.id,
-                "downloads": getattr(m, "downloads", 0),
-                "likes": getattr(m, "likes", 0),
-                "tags": getattr(m, "tags", [])
-            })
+            if m.id not in seen_ids:
+                results.append({
+                    "id": m.id,
+                    "downloads": getattr(m, "downloads", 0),
+                    "likes": getattr(m, "likes", 0),
+                    "tags": getattr(m, "tags", [])
+                })
+                seen_ids.add(m.id)
         return results
     except Exception as e:
         print(f"Error querying Hugging Face API: {e}")

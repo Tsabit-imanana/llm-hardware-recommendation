@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import html
 import pandas as pd
 import numpy as np
 # pyrefly: ignore [missing-import]
@@ -97,6 +98,8 @@ st.markdown("""
         overflow-y: auto;
         font-size: 0.85rem;
         line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -200,7 +203,7 @@ def view_project_scanner():
     st.markdown("---")
     st.subheader("📜 Core Project Scripts & Modules")
     script_summary = [
-        {"Script / Module": "eval_real_llm.py", "Purpose": "Evaluates llama-cpp GGUF quantizations on HumanEvalPlus (EvalPlus) benchmark prompts.", "Status": "Ready"},
+        {"Script / Module": "eval_real_llm.py", "Purpose": "Evaluates llama-cpp GGUF quantizations on HumanEval benchmark prompts.", "Status": "Ready"},
         {"Script / Module": "run_real_stats.py", "Purpose": "Computes Friedman test, Kendall's W, Dunn post-hoc matrix, and recommendations.", "Status": "Ready"},
         {"Script / Module": "scripts/download_models.py", "Purpose": "Downloads default Qwen2.5 GGUF quantizations from Hugging Face.", "Status": "Ready"},
         {"Script / Module": "core/execution_engine.py", "Purpose": "Sandboxed Python code execution with assertion verification.", "Status": "Ready"},
@@ -246,7 +249,8 @@ def view_model_downloader():
             
         st.subheader("📜 Live Download Output Terminal")
         logs_text = "\n".join(dl_state["logs"][-25:]) if dl_state["logs"] else "Initializing download process..."
-        st.markdown(f'<div class="log-terminal">{logs_text}</div>', unsafe_allow_html=True)
+        escaped_dl_logs = html.escape(logs_text)
+        st.markdown(f'<div class="log-terminal">{escaped_dl_logs}</div>', unsafe_allow_html=True)
         st.markdown("---")
 
     tab1, tab2, tab3 = st.tabs(["🔥 Preset GGUF Quantizations", "🌐 Live Hugging Face Search", "💾 Downloaded Models Manager"])
@@ -283,14 +287,14 @@ def view_model_downloader():
     with tab2:
         st.subheader("Search Hugging Face Model Repositories")
         
-        search_query = st.text_input("🔍 Search Model Repositories (e.g. `Qwen2.5-7B`, `Llama-3`, `GGUF`)", value="GGUF")
+        search_query = st.text_input("🔍 Search Model Repositories, Repo ID, or HF URL (e.g. `empero-ai/Qwen3.8-2B-Distill-GGUF`, `Qwen2.5-7B`, `Llama-3`)", value="GGUF")
         
         if st.button("🔍 Search Hugging Face Hub"):
             with st.spinner("Searching Hugging Face API..."):
-                st.session_state["hf_search_results"] = search_hf_models(search_query, limit=12)
+                st.session_state["hf_search_results"] = search_hf_models(search_query, limit=25)
         
         if "hf_search_results" not in st.session_state:
-            st.session_state["hf_search_results"] = search_hf_models("GGUF", limit=12)
+            st.session_state["hf_search_results"] = search_hf_models("GGUF", limit=25)
         
         hf_results = st.session_state["hf_search_results"]
         
@@ -368,7 +372,7 @@ def view_model_downloader():
 
 def view_eval_runner():
     st.markdown('<div class="main-header">⚡ Real LLM Evaluation Engine (eval_real_llm)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Select target models, configure prompt sample size, and run HumanEvalPlus (EvalPlus) code generation evaluation.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Select target models, configure prompt sample size, and run HumanEval code generation evaluation.</div>', unsafe_allow_html=True)
 
     state = eval_runner.get_state()
     is_running = state["is_running"]
@@ -394,7 +398,7 @@ def view_eval_runner():
                 min_value=1,
                 max_value=20,
                 value=20,
-                help="Number of HumanEvalPlus (EvalPlus) benchmark prompts to evaluate per model variant."
+                help="Number of HumanEval benchmark prompts to evaluate per model variant."
             )
         
         # Build mapping & display table
@@ -451,10 +455,11 @@ def view_eval_runner():
                 st.rerun()
 
     with col_status:
-        if is_running:
-            st.markdown('<span class="status-badge-running">● RUNNING</span> &nbsp; ' + f"**{state['status']}**", unsafe_allow_html=True)
+        escaped_status = html.escape(str(state['status']))
+        if state["is_running"]:
+            st.markdown(f'<span class="status-badge-running">● RUNNING</span> &nbsp; **{escaped_status}**', unsafe_allow_html=True)
         else:
-            st.markdown('<span class="status-badge-idle">● IDLE</span> &nbsp; ' + f"Status: {state['status']}", unsafe_allow_html=True)
+            st.markdown(f'<span class="status-badge-idle">● IDLE</span> &nbsp; Status: {escaped_status}', unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -474,7 +479,8 @@ def view_eval_runner():
     # Real-time stdout log terminal
     st.subheader("📜 Live Output Console Logs")
     logs_text = "\n".join(state["logs"][-30:]) if state["logs"] else "No evaluation log output yet. Click 'Start Evaluation' above."
-    st.markdown(f'<div class="log-terminal">{logs_text}</div>', unsafe_allow_html=True)
+    escaped_logs = html.escape(logs_text)
+    st.markdown(f'<div class="log-terminal">{escaped_logs}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("📊 Live Evaluation Results Matrix")
@@ -517,7 +523,7 @@ def view_eval_runner():
                     y="Pass Rate",
                     color="Quantization",
                     markers=True,
-                    title="Per-Prompt Pass Rate (HumanEvalPlus Benchmark)"
+                    title="Per-Prompt Pass Rate (HumanEval Benchmark)"
                 )
                 fig_line.update_layout(template="plotly_dark", height=350)
                 st.plotly_chart(fig_line, use_container_width=True)

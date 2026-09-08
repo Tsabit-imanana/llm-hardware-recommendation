@@ -217,20 +217,21 @@ MAX_TOKENS  = 512
 }
 ```
 
-**Metrik UR** (Unit test pass Rate): `UR(P_i, Q_j) = sum(S) / K` — rata-rata biner dari seluruh assertion.
+**Metrik UR** (Unit test pass Rate): `UR(P_i, Q_j) = sum(S) / K` — rata-rata biner dari seluruh assertion yang diuji secara individual.
 
-> **Catatan penting**: Karena assertion HumanEval biasanya berupa satu fungsi `check(entry_point)` yang memanggil banyak assertion internal, `total_tests` dalam prakteknya sering bernilai 1, sehingga `unit_test_pass_rate` adalah binary (0.0 atau 1.0).
+> **Per-Assertion Granular Scoring**: Melalui fungsi `extract_assertions_from_test_code()`, blok fungsi `check(candidate)` dari HumanEval diurai via AST menjadi unit assertion terpisah (rata-rata 7 assertion per prompt). Setiap assertion diuji secara independen di sandbox, sehingga `unit_test_pass_rate` menghasilkan nilai proporsional (misalnya 5/7 = 0.71), bukan sekadar biner (0.0 atau 1.0).
 
 ---
 
 ### 4.3 `data/dataset_loader.py` — HumanEval Loader
 
-**Peran**: Memuat subset problem dari benchmark HumanEval (OpenAI, 2021).
+**Peran**: Memuat subset problem dari benchmark HumanEval (OpenAI, 2021) dan mengekstrak per-assertion granular list.
 
 **`load_humaneval_subset(limit=20)`**:
 - Prioritas pertama: file lokal `./data/HumanEval.jsonl.gz`.
 - Jika tidak ada, gunakan `read_problems()` dari package `human_eval`.
-- Kembalikan list dict berisi: `task_id`, `prompt`, `entry_point`, `test_code`, `canonical_solution`.
+- Mengekstrak `test_assertions` menggunakan `extract_assertions_from_test_code(test_code, entry_point)` via AST.
+- Kembalikan list dict berisi: `task_id`, `prompt`, `entry_point`, `test_code`, `test_assertions`, `canonical_solution`.
 
 **Format problem HumanEval:**
 ```python
@@ -239,6 +240,11 @@ MAX_TOKENS  = 512
     "prompt": "from typing import List\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    ...",
     "entry_point": "has_close_elements",
     "test_code": "def check(candidate):\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3) == True\n    ...",
+    "test_assertions": [
+        "candidate = has_close_elements\nassert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3) == True",
+        "candidate = has_close_elements\nassert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05) == False",
+        # ...
+    ],
     "canonical_solution": "    for idx, ...",
 }
 ```
