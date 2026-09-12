@@ -5,7 +5,7 @@ from scipy import stats
 import scikit_posthocs as sp
 
 STANDARD_QUANT_PRECISION_ORDER = [
-    "F32", "FP16", "Q8_0", "Q6_K", 
+    "F32", "FP16", "BF16", "Q8_0", "Q6_K", 
     "Q5_K_M", "Q5_K_S", "Q5_0", 
     "Q4_K_M", "Q4_K_S", "Q4_0", "IQ4_NL", "IQ4_XS",
     "Q3_K_L", "Q3_K_M", "Q3_K_S", "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS",
@@ -19,8 +19,12 @@ def get_quant_order(present_levels: list[str]) -> list[str]:
     def sort_key(q):
         q_upper = q.upper()
         if q_upper in STANDARD_QUANT_PRECISION_ORDER:
-            return (0, STANDARD_QUANT_PRECISION_ORDER.index(q_upper))
-        return (1, q)
+            return (0, "", STANDARD_QUANT_PRECISION_ORDER.index(q_upper), q)
+        for idx, pattern in enumerate(STANDARD_QUANT_PRECISION_ORDER):
+            if pattern in q_upper:
+                prefix = q.split("-")[0] if "-" in q else ""
+                return (1, prefix, idx, q)
+        return (2, "", 999, q)
 
     return sorted(present_levels, key=sort_key)
 

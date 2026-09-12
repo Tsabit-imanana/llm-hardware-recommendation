@@ -1,15 +1,17 @@
 {
   "models_map": {
+    "Qwen3.5-9B-BF16": "./models/Qwen3.5-9B-BF16.gguf",
+    "Qwen3.8-27B-Q6_K": "./models/Qwen3.8-27B-Q6_K.gguf",
     "Qwen3.8-2B-BF16": "./models/Qwen3.8-2B-BF16.gguf",
-    "Q4_K_M": "./models/Qwen3.8-2B-Q4_K_M.gguf",
-    "Q5_K_M": "./models/Qwen3.8-2B-Q5_K_M.gguf",
-    "Q6_K": "./models/Qwen3.8-2B-Q6_K.gguf",
-    "Q8_0": "./models/Qwen3.8-2B-Q8_0.gguf",
-    "FP16": "./models/qwen2.5-7b-instruct-fp16.gguf",
-    "Q4_K_M_qwen2.": "./models/qwen2.5-7b-instruct-q4_k_m.gguf",
-    "Q5_K_M_qwen2.": "./models/qwen2.5-7b-instruct-q5_k_m.gguf",
-    "Q6_K_qwen2.": "./models/qwen2.5-7b-instruct-q6_k.gguf",
-    "Q8_0_qwen2.": "./models/qwen2.5-7b-instruct-q8_0.gguf"
+    "Qwen3.8-2B-Q4_K_M": "./models/Qwen3.8-2B-Q4_K_M.gguf",
+    "Qwen3.8-2B-Q5_K_M": "./models/Qwen3.8-2B-Q5_K_M.gguf",
+    "Qwen3.8-2B-Q6_K": "./models/Qwen3.8-2B-Q6_K.gguf",
+    "Qwen3.8-2B-Q8_0": "./models/Qwen3.8-2B-Q8_0.gguf",
+    "qwen2.5-7b-instruct-fp16": "./models/qwen2.5-7b-instruct-fp16.gguf",
+    "qwen2.5-7b-instruct-q4_k_m": "./models/qwen2.5-7b-instruct-q4_k_m.gguf",
+    "qwen2.5-7b-instruct-q5_k_m": "./models/qwen2.5-7b-instruct-q5_k_m.gguf",
+    "qwen2.5-7b-instruct-q6_k": "./models/qwen2.5-7b-instruct-q6_k.gguf",
+    "qwen2.5-7b-instruct-q8_0": "./models/qwen2.5-7b-instruct-q8_0.gguf"
   },
   "num_prompts": 20
 }

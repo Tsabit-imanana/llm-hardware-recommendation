@@ -3,6 +3,7 @@ from stats.stat_engine import STANDARD_QUANT_PRECISION_ORDER, get_quant_order
 DEFAULT_VRAM_LOOKUP_7B = {
     "F32": 28.0,
     "FP16": 14.0,
+    "BF16": 14.0,
     "Q8_0": 7.5,
     "Q6_K": 6.0,
     "Q5_K_M": 5.0,
@@ -54,11 +55,12 @@ def recommend_model(
     # Gather local model file sizes for dynamic VRAM estimation
     local_models_vram = {}
     try:
-        from utils.hf_helper import get_local_models, get_quant_label
+        import os
+        from utils.hf_helper import get_local_models
         for m in get_local_models():
-            label = get_quant_label(m["filename"])
-            # VRAM requirement = Model file size (GB) + ~1.0 GB context/overhead
-            local_models_vram[label] = round(m["size_gb"] + 1.0, 1)
+            vram_est = round(m["size_gb"] + 1.0, 1)
+            stem = os.path.splitext(m["filename"])[0]
+            local_models_vram[stem] = vram_est
     except Exception:
         pass
 

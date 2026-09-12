@@ -405,16 +405,14 @@ def view_eval_runner():
         models_map_preview = {}
         for fname in selected_model_files:
             m_path = f"./models/{fname}"
-            label = get_quant_label(fname)
-            # Ensure unique keys if duplicate labels exist
-            if label in models_map_preview:
-                label = f"{label}_{fname[:6]}"
+            # Use full model name without extension for unambiguous identification
+            label = os.path.splitext(fname)[0]
             models_map_preview[label] = m_path
 
         if selected_model_files:
             with st.expander("🔍 View Selected Evaluation Mapping", expanded=False):
                 df_map = pd.DataFrame([
-                    {"Quantization Label": k, "Model Path": v, "File Status": "Exists" if os.path.exists(v) else "Missing"}
+                    {"Model Full Name": k, "Model Path": v, "File Status": "Exists" if os.path.exists(v) else "Missing"}
                     for k, v in models_map_preview.items()
                 ])
                 st.dataframe(df_map, use_container_width=True, hide_index=True)
@@ -470,7 +468,7 @@ def view_eval_runner():
     
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
-        st.caption(f"**Current Quantization Level**: `{state['quant'] or 'N/A'}`")
+        st.caption(f"**Current Model**: `{state['quant'] or 'N/A'}`")
     with col_p2:
         st.caption(f"**Evaluated Prompt**: `{state['prompt_idx']}/{state['total_prompts']}`")
     with col_p3:
@@ -493,40 +491,88 @@ def view_eval_runner():
                 data = json.load(f)
             df_matrix = pd.DataFrame(data)
 
+            # Map shortened keys from eval_config.json if present
+            cfg_path = "./results/eval_config.json"
+            if os.path.exists(cfg_path):
+                try:
+                    with open(cfg_path, "r") as f_cfg:
+                        cfg_data = json.load(f_cfg)
+                        m_map = cfg_data.get("models_map", {})
+                        rename_dict = {}
+                        for short_key, full_path in m_map.items():
+                            full_name = os.path.splitext(os.path.basename(full_path))[0]
+                            if short_key in df_matrix.columns and short_key != full_name:
+                                rename_dict[short_key] = full_name
+                        if rename_dict:
+                            df_matrix = df_matrix.rename(columns=rename_dict)
+                except Exception:
+                    pass
+
             col_chart1, col_chart2 = st.columns(2)
 
             with col_chart1:
-                st.markdown("#### Mean Unit Test Pass Rate (UR) per Quantization")
+                st.markdown("#### Mean Unit Test Pass Rate (UR) per Model")
                 mean_series = df_matrix.mean().reset_index()
-                mean_series.columns = ["Quantization Level", "Mean UR Pass Rate"]
+                mean_series.columns = ["Model Full Name", "Mean UR Pass Rate"]
                 
                 fig_bar = px.bar(
                     mean_series,
-                    x="Quantization Level",
+                    x="Model Full Name",
                     y="Mean UR Pass Rate",
-                    color="Quantization Level",
+                    color="Model Full Name",
                     text_auto=".3f",
                     title="Average Pass Rate Comparison (Higher is Better)",
                     range_y=[0, 1.0]
                 )
-                fig_bar.update_layout(template="plotly_dark", height=350)
+                fig_bar.update_layout(template="plotly_dark", height=380, xaxis_tickangle=-30)
                 st.plotly_chart(fig_bar, use_container_width=True)
 
             with col_chart2:
                 st.markdown("#### Prompt-by-Prompt Pass Rate Trajectory")
-                df_matrix["Prompt_Index"] = [f"P_{i+1:02d}" for i in range(len(df_matrix))]
-                melted = df_matrix.melt(id_vars=["Prompt_Index"], var_name="Quantization", value_name="Pass Rate")
+                df_matrix_display = df_matrix.copy()
+                df_matrix_display["Prompt_Index"] = [f"P_{i+1:02d}" for i in range(len(df_matrix_display))]
+                melted = df_matrix_display.melt(id_vars=["Prompt_Index"], var_name="Model Full Name", value_name="Pass Rate")
                 
                 fig_line = px.line(
                     melted,
                     x="Prompt_Index",
                     y="Pass Rate",
-                    color="Quantization",
+                    color="Model Full Name",
                     markers=True,
                     title="Per-Prompt Pass Rate (HumanEval Benchmark)"
                 )
-                fig_line.update_layout(template="plotly_dark", height=350)
+                fig_line.update_layout(template="plotly_dark", height=380)
                 st.plotly_chart(fig_line, use_container_width=True)
+
+            # Detailed Models Breakdown Table
+            st.markdown("#### 📋 Evaluated Models Details & Full Names")
+            model_details = []
+            for col in df_matrix.columns:
+                mean_ur = float(df_matrix[col].mean())
+                quant_type = "Unknown"
+                for q in ["BF16", "FP16", "Q8_0", "Q6_K", "Q5_K_M", "Q5_K_S", "Q4_K_M", "Q4_K_S", "Q3_K_M", "Q2_K"]:
+                    if q.lower() in col.lower():
+                        quant_type = q
+                        break
+                
+                base_arch = col
+                if "qwen3.8-2b" in col.lower():
+                    base_arch = "Qwen 3.8B Distill (2.8B Params)"
+                elif "qwen2.5-7b" in col.lower():
+                    base_arch = "Qwen 2.5 7B Instruct (7.6B Params)"
+
+                fpath = f"./models/{col}.gguf"
+                size_str = f"{os.path.getsize(fpath) / (1024**3):.2f} GB" if os.path.exists(fpath) else "N/A"
+                
+                model_details.append({
+                    "Full Model Name": col,
+                    "Base Architecture": base_arch,
+                    "Quantization Format": quant_type,
+                    "GGUF File Size": size_str,
+                    "Mean Pass Rate (UR)": f"{mean_ur:.3f}"
+                })
+            
+            st.dataframe(pd.DataFrame(model_details), use_container_width=True, hide_index=True)
 
             with st.expander("🔍 View Raw Evaluation Matrix JSON"):
                 st.json(data)
